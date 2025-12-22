@@ -1,74 +1,83 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
+import Chat from "./Chat";
+import { v4 as uuid } from "uuid";
 
 export default function App() {
-  const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState("");
-  const chatEndRef = useRef(null);
+  const [conversationId, setConversationId] = useState(() => uuid());
+  const [mode, setMode] = useState("quick"); // 'quick' or 'project'
+  const [history, setHistory] = useState([]);
 
-  function scrollToBottom() {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  // Fetch history when app starts
+  useEffect(() => {
+    fetchHistory();
+  }, []);
+
+  async function fetchHistory() {
+    try {
+      const res = await fetch("http://localhost:3001/history");
+      const data = await res.json();
+      setHistory(data);
+    } catch (err) {
+      console.error("Failed to fetch history", err);
+    }
   }
 
-  async function send() {
-    if (!input.trim()) return;
-    const userMsg = { role: "user", content: input };
-    setMessages(prev => [...prev, userMsg]);
-    setInput("");
-
-    const res = await fetch("http://localhost:3001/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ conversationId: "default", message: userMsg.content }),
-    });
-    const data = await res.json();
-    const aiMsg = { role: "assistant", content: data.reply };
-    setMessages(prev => [...prev, aiMsg]);
+  function startNewChat() {
+    setConversationId(uuid());
+    // We don't add it to history list yet; it appears after first message
   }
 
-  useEffect(scrollToBottom, [messages]);
+  // Filter history based on the current mode
+  const filteredHistory = history.filter((h) => h.type === mode);
 
   return (
-    <div style={{ width: "400px", margin: "20px auto", fontFamily: "sans-serif" }}>
-      <div style={{ height: "500px", overflowY: "auto", border: "1px solid #333", padding: "10px", background: "#111" }}>
-        {messages.map((m, i) => (
-          <div
-            key={i}
-            style={{
-              textAlign: m.role === "user" ? "right" : "left",
-              margin: "5px 0",
-            }}
+    <>
+      {/* SIDEBAR */}
+      <div className="sidebar">
+        
+        {/* Dual Mode Switcher */}
+        <div className="mode-switch">
+          <button 
+            className={mode === "quick" ? "active" : ""} 
+            onClick={() => setMode("quick")}
           >
-            <span
-              style={{
-                display: "inline-block",
-                padding: "8px 12px",
-                borderRadius: "12px",
-                background: m.role === "user" ? "#0f62fe" : "#333",
-                color: "#fff",
-                maxWidth: "80%",
-                wordWrap: "break-word",
-              }}
-            >
-              {m.content}
-            </span>
-          </div>
-        ))}
-        <div ref={chatEndRef}></div>
-      </div>
-      <div style={{ marginTop: "10px", display: "flex" }}>
-        <input
-          style={{ flex: 1, padding: "8px", borderRadius: "6px", border: "1px solid #333" }}
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => e.key === "Enter" && send()}
-        />
-        <button
-          onClick={send}
-          style={{ marginLeft: "5px", padding: "8px 12px", borderRadius: "6px", border: "none", background: "#0f62fe", color: "#fff" }}
-        >
-          Send
+            🔍 Quick
+          </button>
+          <button 
+            className={mode === "project" ? "active" : ""} 
+            onClick={() => setMode("project")}
+          >
+            🚀 Project
+          </button>
+        </div>
+
+        <button className="new-chat-btn" onClick={startNewChat}>
+          + New {mode === "quick" ? "Search" : "Project"}
         </button>
+
+        <div className="history-list">
+          <p style={{ color: "#666", fontSize: "12px", marginBottom: "10px" }}>
+            {mode === "quick" ? "RECENT SEARCHES" : "YOUR PROJECTS"}
+          </p>
+          {filteredHistory.map((chat) => (
+            <div
+              key={chat.id}
+              className={`history-item ${chat.id === conversationId ? "active" : ""}`}
+              onClick={() => setConversationId(chat.id)}
+            >
+              {chat.title}
+            </div>
+          ))}
+        </div>
       </div>
-    </div>
+
+      {/* CHAT AREA - We pass the 'mode' so Chat.jsx knows what type to save */}
+      <Chat 
+        key={conversationId} 
+        conversationId={conversationId} 
+        mode={mode}
+        onMessageSent={fetchHistory} 
+      />
+    </>
   );
 }
